@@ -52,6 +52,15 @@ if not cap.isOpened():                # 如果攝影機無法開啟就結束
     print("❌ 無法開啟影片")
     exit()
 
+# 擷取影片資訊
+fps = int(cap.get(cv2.CAP_PROP_FPS))
+w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+# 準備寫入影片（先預設但不寫入）
+fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+output_path = "output_annotated.mp4"
+out = cv2.VideoWriter(output_path, fourcc, fps, (w, h))
+
 # ========== 主迴圈開始：逐幀讀取畫面與姿勢分析 ==========
 
 while True:
@@ -108,6 +117,8 @@ while True:
 
     # 顯示結果視窗
     cv2.imshow("Pose Detection (Multi-person)", frame)
+    # ✅ 寫入目前這一幀
+    out.write(frame)
 
     # 如果按下 'q' 鍵就跳出迴圈
     if cv2.waitKey(1) & 0xFF == ord("q"):
@@ -116,3 +127,12 @@ while True:
 # ========== 清理資源 ==========
 cap.release()              # 關閉攝影機
 cv2.destroyAllWindows()    # 關閉 OpenCV 視窗
+
+# 詢問使用者是否要保留儲存影片
+save = input("是否要儲存結果影片？(y/n): ").strip().lower()
+if save != 'y':
+    import os
+    os.remove(output_path)
+    print("❌ 已刪除影片")
+else:
+    print("✅ 影片已儲存於：", output_path)
