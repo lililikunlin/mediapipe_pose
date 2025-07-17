@@ -4,6 +4,7 @@ import time
 import math
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
+import os
 
 # ========= 模型載入：Pose =========
 pose_model_path = 'pose_landmarker_full.task'
@@ -124,7 +125,18 @@ w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HE
 
 # 準備寫入影片（先預設但不寫入）
 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-output_path = f"{VideoSource.replace('.MOV','')}_OutputAnnotated.mp4"
+
+# 處理副檔名忽略大小寫
+base_name = os.path.splitext(VideoSource)[0]  # 去掉副檔名
+output_path = f"{base_name}_OutputAnnotated.mp4"
+
+# 若檔案已存在，自動重命名避免覆蓋
+if os.path.exists(output_path):
+    timestamp = int(time.time())
+    output_path = f"{base_name}_OutputAnnotated_{timestamp}.mp4"
+    print(f"⚠️ 已存在同名輸出檔，已自動改名為：{output_path}")
+
+# 寫入器初始化
 out = cv2.VideoWriter(output_path, fourcc, fps, (w, h))
 
 # ========= 主迴圈 =========
@@ -202,8 +214,7 @@ cv2.destroyAllWindows()
 
 # 詢問使用者是否要保留儲存影片
 save = input("是否要儲存結果影片？(y/n): ").strip().lower()
-if save != 'y':
-    import os
+if save not in ['y', 'yes'] :
     os.remove(output_path)
     print("❌ 已刪除影片")
 else:
