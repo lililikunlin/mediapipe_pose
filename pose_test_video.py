@@ -3,6 +3,7 @@ import mediapipe as mp                 # MediaPipe：Google 提供的姿勢估�
 import time                            # 用於取得當前時間（timestamp）
 from mediapipe.tasks import python     # 匯入 MediaPipe 的 Python Tasks API
 from mediapipe.tasks.python import vision  # 匯入 MediaPipe 的視覺任務模組
+import os
 
 # ========== 模型初始化 ==========
 
@@ -45,9 +46,9 @@ PERSON_COLORS = [
 ]
 
 # ========== 開啟影片 ==========
-
+VideoSource="普通人如何學會一個標準的深蹲？【卓叔增重】.mp4" # ← 改為影片來源
 #cap = cv2.VideoCapture(0)              # 使用預設攝影機（0 表內建或第一個攝影機）
-cap = cv2.VideoCapture("20250714.MOV")   # ← 改為影片來源
+cap = cv2.VideoCapture(VideoSource)  
 if not cap.isOpened():                # 如果攝影機無法開啟就結束
     print("❌ 無法開啟影片")
     exit()
@@ -58,7 +59,16 @@ w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HE
 
 # 準備寫入影片（先預設但不寫入）
 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-output_path = "output_annotated.mp4"
+# 處理副檔名忽略大小寫
+base_name = os.path.splitext(VideoSource)[0]  # 去掉副檔名
+output_path = f"{base_name}_OutputAnnotated.mp4"
+
+# 若檔案已存在，自動重命名避免覆蓋
+if os.path.exists(output_path):
+    timestamp = int(time.time())
+    output_path = f"{base_name}_OutputAnnotated_{timestamp}.mp4"
+    print(f"⚠️ 已存在同名輸出檔，已自動改名為：{output_path}")
+
 out = cv2.VideoWriter(output_path, fourcc, fps, (w, h))
 
 # ========== 主迴圈開始：逐幀讀取畫面與姿勢分析 ==========
@@ -130,8 +140,7 @@ cv2.destroyAllWindows()    # 關閉 OpenCV 視窗
 
 # 詢問使用者是否要保留儲存影片
 save = input("是否要儲存結果影片？(y/n): ").strip().lower()
-if save != 'y':
-    import os
+if save not in ['y', 'yes']:
     os.remove(output_path)
     print("❌ 已刪除影片")
 else:
