@@ -5,6 +5,8 @@ import math
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import os
+from PIL import ImageFont, ImageDraw, Image #中文顯示
+import numpy as np  # 陣列與數值運算
 
 # ========= 模型載入：Pose =========
 pose_model_path = 'pose_landmarker_full.task'
@@ -109,6 +111,43 @@ def classify_pose(person):
             return "Standing"
     except:
         return "Detecting..."
+    
+def draw_chinese_text_with_outline(img, text, position, font_path="C:/Windows/Fonts/msjh.ttc",
+                                   font_size=24, text_color=(255,255,255), outline_color=(0,0,0),
+                                   bg_color=None, padding=4):
+    """
+    繪製帶外框的中文文字，可加背景。
+    - text_color: 文字主顏色
+    - outline_color: 外框色（描邊）
+    - bg_color: 若要填背景色（例如黑底白字），否則設 None
+    """
+    if isinstance(img, np.ndarray):
+        img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    else:
+        img_pil = img
+
+    draw = ImageDraw.Draw(img_pil)
+    font = ImageFont.truetype(font_path, font_size)
+
+    # 計算文字大小
+    text_bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = text_bbox[2] - text_bbox[0]
+    text_h = text_bbox[3] - text_bbox[1]
+    x, y = position
+
+    # 畫底色框（如需）
+    if bg_color is not None:
+        draw.rectangle([x - padding, y - padding, x + text_w + padding, y + text_h + padding], fill=bg_color)
+
+    # 畫外框（在主文字四周畫多次偏移）
+    for dx in [-1, 1, 0, 0, -1, -1, 1, 1]:  # 8個方向
+        for dy in [-1, 1, 0, 0, -1, 1, -1, 1]:
+            draw.text((x + dx, y + dy), text, font=font, fill=outline_color)
+
+    # 畫主文字
+    draw.text((x, y), text, font=font, fill=text_color)
+
+    return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
 # ========== 開啟影片 ==========
 
@@ -172,19 +211,20 @@ while True:
             # ===== 繪製姿勢點與連線 =====
             cv2.putText(frame, f"Person {idx+1}", (px, py - 80),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, point_color, 2)
-            # ===== 顯示 25、26 點角度 =====
             try:
                 # 左膝角度（點 23-25-27）
                 left_angle = calculate_angle(person[23], person[25], person[27])
                 x25, y25 = int(person[25].x * w), int(person[25].y * h)
-                cv2.putText(frame, f"{left_angle:.0f}deg", (x25 - 30, y25 - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+                frame = draw_chinese_text_with_outline(frame, f"左膝：{left_angle:.0f}°", (x25 - 50, y25 - 40),
+                    font_path="C:/Windows/Fonts/msjh.ttc", font_size=24, text_color=(255,255,255),
+                    outline_color=(0,0,0),bg_color=None)
 
                 # 右膝角度（點 24-26-28）
                 right_angle = calculate_angle(person[24], person[26], person[28])
                 x26, y26 = int(person[26].x * w), int(person[26].y * h)
-                cv2.putText(frame, f"{right_angle:.0f}deg", (x26 - 30, y26 - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+                frame = draw_chinese_text_with_outline(frame, f"右膝：{right_angle:.0f}°", (x26 - 50, y26 - 40),
+                    font_path="C:/Windows/Fonts/msjh.ttc", font_size=24, text_color=(255,255,255),
+                    outline_color=(0,0,0),bg_color=None)
             except:
                 pass
 
