@@ -96,7 +96,7 @@ def classify_pose(person):
         avg_wrist_y = (l_wrist_y + r_wrist_y) / 2
 
         if avg_wrist_y < nose_y:
-            return "Hands Up"
+            return "Hands Up", None
 
         left_knee_angle = calculate_angle(person[LEFT_HIP], person[LEFT_KNEE], person[LEFT_ANKLE])
         right_knee_angle = calculate_angle(person[RIGHT_HIP], person[RIGHT_KNEE], person[RIGHT_ANKLE])
@@ -104,13 +104,19 @@ def classify_pose(person):
 
         if avg_knee_angle < 100:
             if 70 <= avg_knee_angle <= 100:
-                return "Squatting-Good"
+                return "Squatting-Good", None
             else:
-                return "Squatting-Bad"
+                # 計算與最近標準邊界的差距
+                if avg_knee_angle < 70:
+                    diff = 70 - avg_knee_angle
+                else:
+                    diff = avg_knee_angle - 100
+                return "Squatting-Bad", diff
         else:
-            return "Standing"
+            return "Standing", None
     except:
-        return "Detecting..."
+        return "Detecting...", None
+
     
 def draw_chinese_text_with_outline(img, text, position, font_path="C:/Windows/Fonts/msjh.ttc",
                                    font_size=24, text_color=(255,255,255), outline_color=(0,0,0),
@@ -197,13 +203,25 @@ while True:
             px, py = int(person[0].x * w), int(person[0].y * h)
 
             # ===== 分類姿勢並決定顏色 =====
-            pose_label = classify_pose(person)
+            pose_label, angle_diff = classify_pose(person)
             if "Good" in pose_label:
                 display_color = (0, 255, 0)  # 綠色標準
             elif "Bad" in pose_label:
                 display_color = (0, 0, 255)  # 紅色不標準
             else:
                 display_color = point_color  # 原本顏色
+
+            if pose_label == "Squatting-Bad" and angle_diff is not None:
+                warning_text = f"距標準姿勢差 {angle_diff:.0f}°"
+                frame = draw_chinese_text_with_outline(
+                    frame, warning_text,
+                    position=(px, py - 20),  # 顯示在人物上方
+                    font_path="C:/Windows/Fonts/msjh.ttc",
+                    font_size=22,
+                    text_color=(0, 0, 255),
+                    outline_color=(255, 255, 255)
+                )
+
 
             cv2.putText(frame, f"Pose: {pose_label}", (px, py - 50),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, display_color, 2)
