@@ -113,7 +113,7 @@ def classify_pose(person):
 # ========== 開啟影片 ==========
 
 #cap = cv2.VideoCapture(0)              # 使用預設攝影機（0 表內建或第一個攝影機）
-VideoSource="20250716_Hand+Pose_PostureChecker.MOV" # ← 改為影片來源
+VideoSource="太極拳入門招式「蹲馬步」.mp4" # ← 改為影片來源
 cap = cv2.VideoCapture(VideoSource)   
 if not cap.isOpened():                # 如果攝影機無法開啟就結束
     print("❌ 無法開啟影片")
@@ -172,6 +172,22 @@ while True:
             # ===== 繪製姿勢點與連線 =====
             cv2.putText(frame, f"Person {idx+1}", (px, py - 80),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, point_color, 2)
+            # ===== 顯示 25、26 點角度 =====
+            try:
+                # 左膝角度（點 23-25-27）
+                left_angle = calculate_angle(person[23], person[25], person[27])
+                x25, y25 = int(person[25].x * w), int(person[25].y * h)
+                cv2.putText(frame, f"{left_angle:.0f}deg", (x25 - 30, y25 - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+
+                # 右膝角度（點 24-26-28）
+                right_angle = calculate_angle(person[24], person[26], person[28])
+                x26, y26 = int(person[26].x * w), int(person[26].y * h)
+                cv2.putText(frame, f"{right_angle:.0f}deg", (x26 - 30, y26 - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+            except:
+                pass
+
             for i, lm in enumerate(person):
                 cx, cy = int(lm.x * w), int(lm.y * h)
                 cv2.circle(frame, (cx, cy), 4, point_color, -1)
