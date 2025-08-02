@@ -77,55 +77,54 @@ def calculate_angle(a, b, c):
     angle_rad = math.acos(dot_product / (mag_ab * mag_cb))
     return math.degrees(angle_rad)
 
-# ========= 姿勢分類函數（加上好壞蹲姿） =========
+# ========= 姿勢分類（含角度偏差） =========
 def classify_pose(person):
-    NOSE = 0
-    LEFT_WRIST = 15
-    RIGHT_WRIST = 16
-    LEFT_HIP = 23
-    RIGHT_HIP = 24
-    LEFT_KNEE = 25
-    RIGHT_KNEE = 26
-    LEFT_ANKLE = 27
-    RIGHT_ANKLE = 28
-
     try:
+        NOSE = 0
+        LEFT_WRIST, RIGHT_WRIST = 15, 16
+        LEFT_HIP, RIGHT_HIP = 23, 24
+        LEFT_KNEE, RIGHT_KNEE = 25, 26
+        LEFT_ANKLE, RIGHT_ANKLE = 27, 28
+
         l_wrist_y = person[LEFT_WRIST].y
         r_wrist_y = person[RIGHT_WRIST].y
         nose_y = person[NOSE].y
         avg_wrist_y = (l_wrist_y + r_wrist_y) / 2
 
         if avg_wrist_y < nose_y:
-            return "Hands Up", None
+            return "舉手", None
 
         left_knee_angle = calculate_angle(person[LEFT_HIP], person[LEFT_KNEE], person[LEFT_ANKLE])
         right_knee_angle = calculate_angle(person[RIGHT_HIP], person[RIGHT_KNEE], person[RIGHT_ANKLE])
         avg_knee_angle = (left_knee_angle + right_knee_angle) / 2
 
-        if avg_knee_angle < 100:
-            if 70 <= avg_knee_angle <= 100:
-                return "Squatting-Good", None
+        if avg_knee_angle < 120:
+            if 83 <= avg_knee_angle <= 97:
+                return "蹲馬步-良好", None
             else:
                 # 計算與最近標準邊界的差距
-                if avg_knee_angle < 70:
-                    diff = 70 - avg_knee_angle
+                if avg_knee_angle < 83:
+                    diff = 83 - avg_knee_angle
                 else:
-                    diff = avg_knee_angle - 100
-                return "Squatting-Bad", diff
+                    diff = avg_knee_angle - 97
+                return "蹲馬步-不良", diff
         else:
-            return "Standing", None
+            return "站著", None
     except:
-        return "Detecting...", None
+        return "偵測中...", None
 
-    
-def draw_chinese_text_with_outline(img, text, position, font_path="C:/Windows/Fonts/msjh.ttc",
-                                   font_size=24, text_color=(255,255,255), outline_color=(0,0,0),
-                                   bg_color=None, padding=4):
+# ========= 中文 + 外框 文字繪製 =========
+def draw_chinese_text_with_outline(img, text, position,
+    font_path="C:/Windows/Fonts/msjh.ttc",
+    font_size=24,
+    text_color=(255,255,255),
+    outline_color=(0,0,0),
+    bg_color=None,
+    padding=4,
+    with_outline=True):
     """
-    繪製帶外框的中文文字，可加背景。
-    - text_color: 文字主顏色
-    - outline_color: 外框色（描邊）
-    - bg_color: 若要填背景色（例如黑底白字），否則設 None
+    使用 PIL 在 OpenCV 影像上繪製中文文字。
+    可選擇是否描邊、是否加底色。
     """
     if isinstance(img, np.ndarray):
         img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
@@ -135,22 +134,19 @@ def draw_chinese_text_with_outline(img, text, position, font_path="C:/Windows/Fo
     draw = ImageDraw.Draw(img_pil)
     font = ImageFont.truetype(font_path, font_size)
 
-    # 計算文字大小
     text_bbox = draw.textbbox((0, 0), text, font=font)
     text_w = text_bbox[2] - text_bbox[0]
     text_h = text_bbox[3] - text_bbox[1]
     x, y = position
 
-    # 畫底色框（如需）
     if bg_color is not None:
         draw.rectangle([x - padding, y - padding, x + text_w + padding, y + text_h + padding], fill=bg_color)
 
-    # 畫外框（在主文字四周畫多次偏移）
-    for dx in [-1, 1, 0, 0, -1, -1, 1, 1]:  # 8個方向
-        for dy in [-1, 1, 0, 0, -1, 1, -1, 1]:
-            draw.text((x + dx, y + dy), text, font=font, fill=outline_color)
+    if with_outline:
+        for dx in [-1, 1, 0, 0, -1, -1, 1, 1]:
+            for dy in [-1, 1, 0, 0, -1, 1, -1, 1]:
+                draw.text((x + dx, y + dy), text, font=font, fill=outline_color)
 
-    # 畫主文字
     draw.text((x, y), text, font=font, fill=text_color)
 
     return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
@@ -195,6 +191,21 @@ while True:
     timestamp = int(time.time() * 1000)
     h, w, _ = frame.shape
 
+    # 手部偵測（可選保留）
+    hand_result = hand_detector.detect_for_video(mp_image, timestamp)
+    if hand_result.hand_landmarks:
+        for idx, hand in enumerate(hand_result.hand_landmarks):
+            point_color, line_color = HAND_COLORS[idx % len(HAND_COLORS)]
+            for i, lm in enumerate(hand):
+                cx, cy = int(lm.x * w), int(lm.y * h)
+                cv2.circle(frame, (cx, cy), 4, point_color, -1)
+                cv2.putText(frame, f"{i}", (cx + 5, cy - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 1)
+                #cv2.putText(frame, f"{lm.x:.2f},{lm.y:.2f}", (cx + 5, cy + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (200, 200, 200), 1)
+            for start, end in HAND_CONNECTIONS:
+                x1, y1 = int(hand[start].x * w), int(hand[start].y * h)
+                x2, y2 = int(hand[end].x * w), int(hand[end].y * h)
+                cv2.line(frame, (x1, y1), (x2, y2), line_color, 2)
+
     # ===== 姿勢偵測 =====
     pose_result = pose_detector.detect_for_video(mp_image, timestamp)
     if pose_result.pose_landmarks:
@@ -204,47 +215,12 @@ while True:
 
             # ===== 分類姿勢並決定顏色 =====
             pose_label, angle_diff = classify_pose(person)
-            if "Good" in pose_label:
-                display_color = (0, 255, 0)  # 綠色標準
-            elif "Bad" in pose_label:
-                display_color = (0, 0, 255)  # 紅色不標準
+            if "不良" in pose_label:
+                display_color = (255, 0, 0)
+            elif "良好" in pose_label:
+                display_color = (0, 255, 0)
             else:
-                display_color = point_color  # 原本顏色
-
-            if pose_label == "Squatting-Bad" and angle_diff is not None:
-                warning_text = f"距標準姿勢差 {angle_diff:.0f}°"
-                frame = draw_chinese_text_with_outline(
-                    frame, warning_text,
-                    position=(px, py - 20),  # 顯示在人物上方
-                    font_path="C:/Windows/Fonts/msjh.ttc",
-                    font_size=22,
-                    text_color=(0, 0, 255),
-                    outline_color=(255, 255, 255)
-                )
-
-
-            cv2.putText(frame, f"Pose: {pose_label}", (px, py - 50),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, display_color, 2)
-
-            # ===== 繪製姿勢點與連線 =====
-            cv2.putText(frame, f"Person {idx+1}", (px, py - 80),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, point_color, 2)
-            try:
-                # 左膝角度（點 23-25-27）
-                left_angle = calculate_angle(person[23], person[25], person[27])
-                x25, y25 = int(person[25].x * w), int(person[25].y * h)
-                frame = draw_chinese_text_with_outline(frame, f"左膝：{left_angle:.0f}°", (x25 - 50, y25 - 40),
-                    font_path="C:/Windows/Fonts/msjh.ttc", font_size=24, text_color=(255,255,255),
-                    outline_color=(0,0,0),bg_color=None)
-
-                # 右膝角度（點 24-26-28）
-                right_angle = calculate_angle(person[24], person[26], person[28])
-                x26, y26 = int(person[26].x * w), int(person[26].y * h)
-                frame = draw_chinese_text_with_outline(frame, f"右膝：{right_angle:.0f}°", (x26 - 50, y26 - 40),
-                    font_path="C:/Windows/Fonts/msjh.ttc", font_size=24, text_color=(255,255,255),
-                    outline_color=(0,0,0),bg_color=None)
-            except:
-                pass
+                display_color = (0,255,255) #跟隨人骨架色用point_color
 
             for i, lm in enumerate(person):
                 cx, cy = int(lm.x * w), int(lm.y * h)
@@ -255,24 +231,45 @@ while True:
                 x1, y1 = int(person[start].x * w), int(person[start].y * h)
                 x2, y2 = int(person[end].x * w), int(person[end].y * h)
                 cv2.line(frame, (x1, y1), (x2, y2), line_color, 2)
+
+            # 姿勢標籤（中文）顯示
+            frame = draw_chinese_text_with_outline(
+                frame, f"姿勢：{pose_label}", (px, max(py - 70, 0)),
+                font_path="C:/Windows/Fonts/msjh.ttc",
+                font_size=24, text_color=display_color, outline_color=(0,0,0),
+                with_outline=True
+            )
+
+            if pose_label == "蹲馬步-不良" and angle_diff is not None:
+                warning_text = f"距標準姿勢差 {angle_diff:.0f}°"
+                frame = draw_chinese_text_with_outline(
+                    frame, warning_text, position=(px, max(py - 20, 20)),
+                    font_path="C:/Windows/Fonts/msjh.ttc", font_size=22,
+                    text_color=(255, 255, 255), outline_color=(0, 0, 0),
+                    with_outline=True
+                )
+
+            # 左右膝蓋角度顯示
+            try:
+                left_angle = calculate_angle(person[23], person[25], person[27])
+                x25, y25 = int(person[25].x * w), int(person[25].y * h)
+                frame = draw_chinese_text_with_outline(
+                    frame, f"左膝：{left_angle:.0f}°", (x25 - 50, y25 - 40),
+                    font_size=24, text_color=(255,255,255), outline_color=(0,0,0)
+                )
+
+                right_angle = calculate_angle(person[24], person[26], person[28])
+                x26, y26 = int(person[26].x * w), int(person[26].y * h)
+                frame = draw_chinese_text_with_outline(
+                    frame, f"右膝：{right_angle:.0f}°", (x26 - 50, y26 - 40),
+                    font_size=24, text_color=(255,255,255), outline_color=(0,0,0)
+                )
+            except:
+                pass
+
     else:
         cv2.putText(frame, "No person detected", (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-
-    # ===== 手部偵測 =====
-    hand_result = hand_detector.detect_for_video(mp_image, timestamp)
-    if hand_result.hand_landmarks:
-        for idx, hand in enumerate(hand_result.hand_landmarks):
-            point_color, line_color = HAND_COLORS[idx % len(HAND_COLORS)]
-            for i, lm in enumerate(hand):
-                cx, cy = int(lm.x * w), int(lm.y * h)
-                cv2.circle(frame, (cx, cy), 4, point_color, -1)
-                cv2.putText(frame, f"{i}", (cx + 5, cy - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 1)
-                cv2.putText(frame, f"{lm.x:.2f},{lm.y:.2f}", (cx + 5, cy + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (200, 200, 200), 1)
-            for start, end in HAND_CONNECTIONS:
-                x1, y1 = int(hand[start].x * w), int(hand[start].y * h)
-                x2, y2 = int(hand[end].x * w), int(hand[end].y * h)
-                cv2.line(frame, (x1, y1), (x2, y2), line_color, 2)
 
     # 顯示畫面
     cv2.imshow("Pose + Hand Detection", frame)

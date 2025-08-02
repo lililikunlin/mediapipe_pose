@@ -193,12 +193,12 @@ while True:
 
             # ===== 分類姿勢並決定顏色 =====
             pose_label, angle_diff = classify_pose(person)
-            if "良好" in pose_label:
+            if "不良" in pose_label:
+                display_color = (255, 0, 0)
+            elif "良好" in pose_label:
                 display_color = (0, 255, 0)
-            elif "不良" in pose_label:
-                display_color = (0, 0, 255)
             else:
-                display_color = point_color
+                display_color = (0,255,255) #跟隨人骨架色用point_color
 
             for i, lm in enumerate(person):
                 cx, cy = int(lm.x * w), int(lm.y * h)
@@ -215,16 +215,16 @@ while True:
                 frame, f"姿勢：{pose_label}", (px, max(py - 70, 0)),
                 font_path="C:/Windows/Fonts/msjh.ttc",
                 font_size=24, text_color=display_color, outline_color=(0,0,0),
-                with_outline=False
+                with_outline=True
             )
 
             if pose_label == "蹲馬步-不良" and angle_diff is not None:
                 warning_text = f"距標準姿勢差 {angle_diff:.0f}°"
                 frame = draw_chinese_text_with_outline(
-                    frame, warning_text, position=(px, max(py - 20, 0)),
+                    frame, warning_text, position=(px, max(py - 20, 20)),
                     font_path="C:/Windows/Fonts/msjh.ttc", font_size=22,
-                    text_color=(0, 0, 255), outline_color=(255, 255, 255),
-                    with_outline=False
+                    text_color=(255, 255, 255), outline_color=(0, 0, 0),
+                    with_outline=True
                 )
 
             # 左右膝蓋角度顯示
