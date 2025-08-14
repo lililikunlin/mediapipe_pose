@@ -11,7 +11,7 @@ import numpy as np  # 陣列與數值運算
 # ========== 開啟影片 ==========
 
 #cap = cv2.VideoCapture(0)              # 使用預設攝影機（0 表內建或第一個攝影機）
-VideoSource="太極拳入門招式「蹲馬步」.mp4" # ← 改為影片來源
+VideoSource="精華開合跳_美麗佳人U_nWrZd-6qA.mp4" # ← 改為影片來源
 cap = cv2.VideoCapture(VideoSource)   
 if not cap.isOpened():                # 如果攝影機無法開啟就結束
     print("❌ 無法開啟影片")
@@ -145,41 +145,72 @@ def draw_chinese_text_with_outline(img, text, position,
 
     return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
-# ========= 姿勢分類（含角度偏差） =========
-def classify_pose(person):
-    try:
-        NOSE = 0
-        LEFT_WRIST, RIGHT_WRIST = 15, 16
-        LEFT_HIP, RIGHT_HIP = 23, 24
-        LEFT_KNEE, RIGHT_KNEE = 25, 26
-        LEFT_ANKLE, RIGHT_ANKLE = 27, 28
+# ============幫手函式============
+def euclid(p, q):
+    return math.hypot(p.x - q.x, p.y - q.y)
 
-        l_wrist_y = person[LEFT_WRIST].y
-        r_wrist_y = person[RIGHT_WRIST].y
-        nose_y = person[NOSE].y
-        avg_wrist_y = (l_wrist_y + r_wrist_y) / 2
+# =======開合跳姿勢判定（含條件）=======
+def classify_jumping_jack(person):
+    """
+    回傳：
+      raw_state: 'open' / 'closed' / 'transit'
+      info : dict，包含 arms_up, legs_apart, legs_together, ratio, ankle_dist, hip_width
+    規則：
+      open   = arms_up 且 legs_apart (ratio > 1.4)
+      closed = (not arms_up) 且 legs_together (ratio < 0.7)
+      其他   = transit
+    """
+    NOSE = 0
+    L_HIP, R_HIP = 23, 24
+    L_ANKLE, R_ANKLE = 27, 28
+    L_WRIST, R_WRIST = 15, 16
 
-        if avg_wrist_y < nose_y:
-            return "舉手", None
+    nose = person[NOSE]
+    lh, rh = person[L_HIP], person[R_HIP]
+    la, ra = person[L_ANKLE], person[R_ANKLE]
+    lw, rw = person[L_WRIST], person[R_WRIST]
 
-        left_knee_angle = calculate_angle(person[LEFT_HIP], person[LEFT_KNEE], person[LEFT_ANKLE])
-        right_knee_angle = calculate_angle(person[RIGHT_HIP], person[RIGHT_KNEE], person[RIGHT_ANKLE])
-        avg_knee_angle = (left_knee_angle + right_knee_angle) / 2
+    hip_width = euclid(lh, rh)                   # 髖寬（正規化單位）
+    ankle_dist = euclid(la, ra)                  # 腳踝間距（正規化單位）
+    ratio = ankle_dist / max(hip_width, 1e-6)    # 腿部開合比
 
-        if avg_knee_angle < 120:
-            if 83 <= avg_knee_angle <= 97:
-                return "蹲馬步-良好", None
-            else:
-                # 計算與最近標準邊界的差距
-                if avg_knee_angle < 83:
-                    diff = 83 - avg_knee_angle
-                else:
-                    diff = avg_knee_angle - 97
-                return "蹲馬步-不良", diff
-        else:
-            return "站著", None
-    except:
-        return "偵測中...", None
+    # 手是否高於頭（取兩手腕平均）
+    avg_wrist_y = (lw.y + rw.y) / 2.0
+    arms_up = avg_wrist_y < (nose.y - 0.02)      # 容忍一點 margin
+
+    # 腿部條件（具 hysteresis）
+    legs_apart = ratio > 1.4
+    legs_together = ratio < 0.7
+
+    if arms_up and legs_apart:
+        raw_state = "open"
+    elif (not arms_up) and legs_together:
+        raw_state = "closed"
+    else:
+        raw_state = "transit"
+
+    return raw_state, {
+        "arms_up": arms_up,
+        "legs_apart": legs_apart,
+        "legs_together": legs_together,
+        "ratio": ratio,
+        "ankle_dist": ankle_dist,
+        "hip_width": hip_width
+    }
+
+# ==============================
+# 穩定狀態與「過渡」納入計數的有限狀態機
+# ==============================
+STABLE_FRAMES = {"open": 3, "closed": 3, "transit": 2}  # 各狀態需連續多少幀才視為「穩定」
+rep_count = 0
+
+last_raw_state = None
+raw_streak = 0
+stable_state = "unknown"       # 目前穩定狀態
+phase = "await_open"           # 'await_open' -> 'saw_open' -> 'saw_open_transit' -> (到 closed 時 +1) -> 'await_open'
+
+cooldown_frames = 6            # 計數後最少等待幀數
+since_last_count = cooldown_frames
 
 # ========= 主迴圈 =========
 while True:
@@ -214,15 +245,6 @@ while True:
             point_color, line_color = PERSON_COLORS[idx % len(PERSON_COLORS)]
             px, py = int(person[0].x * w), int(person[0].y * h)
 
-            # ===== 分類姿勢並決定顏色 =====
-            pose_label, angle_diff = classify_pose(person)
-            if "不良" in pose_label:
-                display_color = (255, 0, 0)
-            elif "良好" in pose_label:
-                display_color = (0, 255, 0)
-            else:
-                display_color = (0,255,255) #跟隨人骨架色用point_color
-
             for i, lm in enumerate(person):
                 cx, cy = int(lm.x * w), int(lm.y * h)
                 cv2.circle(frame, (cx, cy), 4, point_color, -1)
@@ -233,47 +255,86 @@ while True:
                 x2, y2 = int(person[end].x * w), int(person[end].y * h)
                 cv2.line(frame, (x1, y1), (x2, y2), line_color, 2)
 
-            # 姿勢標籤（中文）顯示
+            # 分類（原始狀態）
+            raw_state, info = classify_jumping_jack(person)
+
+            # 原始狀態連續幀計數，用於「穩定化」
+            if raw_state == last_raw_state:
+                raw_streak += 1
+            else:
+                last_raw_state = raw_state
+                raw_streak = 1
+
+            # 若原始狀態連續達門檻，更新穩定狀態
+            needed = STABLE_FRAMES.get(raw_state, 1)
+            if raw_streak >= needed and stable_state != raw_state:
+                stable_state = raw_state
+
+                # —— 計數狀態機：必須經過 Open → Transit → Closed 才 +1 ——
+                if stable_state == "open":
+                    phase = "saw_open"
+                elif stable_state == "transit" and phase == "saw_open":
+                    phase = "saw_open_transit"
+                elif (stable_state == "closed"
+                      and phase == "saw_open_transit"
+                      and since_last_count >= cooldown_frames):
+                    rep_count += 1
+                    since_last_count = 0
+                    phase = "await_open"
+                elif stable_state == "closed":
+                    # 沒有經過 open→transit 的 closed，不計數；回到等待 open
+                    phase = "await_open"
+                else:
+                    # 其他組合不影響計數流程
+                    pass
+
+            # 冷卻累計
+            if since_last_count < cooldown_frames:
+                since_last_count += 1
+
+            # 顯示狀態與數值（取鼻點附近顯示）
+            px, py = int(person[0].x * w), int(person[0].y * h)
+            label = {'open': '展開', 'closed': '合併', 'transit': '過渡'}.get(stable_state, '偵測中')
+            color = (0, 255, 0) if stable_state == "open" else ((0, 255, 255) if stable_state == "closed" else (255, 255, 255))
             frame = draw_chinese_text_with_outline(
-                frame, f"姿勢：{pose_label}", (px, max(py - 70, 0)),
-                font_path="C:/Windows/Fonts/msjh.ttc",
-                font_size=24, text_color=display_color, outline_color=(0,0,0),
-                with_outline=True
+                frame, f"姿勢（穩定）：{label}", (px, max(py - 70, 0)), font_size=26, text_color=color
+            )
+            frame = draw_chinese_text_with_outline(
+                frame, f"姿勢（原始）：{ {'open':'展開','closed':'合併','transit':'過渡'}.get(raw_state,'偵測中') }",
+                (px, max(py - 40, 20)), font_size=20, text_color=(180,180,180)
             )
 
-            if pose_label == "蹲馬步-不良" and angle_diff is not None:
-                warning_text = f"距標準姿勢差 {angle_diff:.0f}°"
-                frame = draw_chinese_text_with_outline(
-                    frame, warning_text, position=(px, max(py - 20, 20)),
-                    font_path="C:/Windows/Fonts/msjh.ttc", font_size=22,
-                    text_color=(255, 255, 255), outline_color=(0, 0, 0),
-                    with_outline=True
-                )
+            # 顯示 腳踝距離 / 髖關節寬度 / 腿部開合比
+            la_i, ra_i = 27, 28
+            lh_i, rh_i = 23, 24
+            xa, ya = int(person[la_i].x * w), int(person[la_i].y * h)
+            xb, yb = int(person[ra_i].x * w), int(person[ra_i].y * h)
+            xh1, yh1 = int(person[lh_i].x * w), int(person[lh_i].y * h)
+            xh2, yh2 = int(person[rh_i].x * w), int(person[rh_i].y * h)
 
-            # 左右膝蓋角度顯示
-            try:
-                left_angle = calculate_angle(person[23], person[25], person[27])
-                x25, y25 = int(person[25].x * w), int(person[25].y * h)
-                frame = draw_chinese_text_with_outline(
-                    frame, f"左膝：{left_angle:.0f}°", (x25 - 50, y25 - 40),
-                    font_size=24, text_color=(255,255,255), outline_color=(0,0,0)
-                )
+            frame = draw_chinese_text_with_outline(
+                frame, f"腳踝距離: {info['ankle_dist']:.2f}",
+                (min(xa, xb) - 10, min(ya, yb) - 40), font_size=22
+            )
+            frame = draw_chinese_text_with_outline(
+                frame, f"髖關節寬度: {info['hip_width']:.2f}",
+                (min(xh1, xh2) - 10, min(yh1, yh2) - 40), font_size=22
+            )
+            frame = draw_chinese_text_with_outline(
+                frame, f"腿部開合比: {info['ratio']:.2f}",
+                (10, 50), font_size=22
+            )
 
-                right_angle = calculate_angle(person[24], person[26], person[28])
-                x26, y26 = int(person[26].x * w), int(person[26].y * h)
-                frame = draw_chinese_text_with_outline(
-                    frame, f"右膝：{right_angle:.0f}°", (x26 - 50, y26 - 40),
-                    font_size=24, text_color=(255,255,255), outline_color=(0,0,0)
-                )
-            except:
-                pass
-
+            # 左上角顯示總次數
+            frame = draw_chinese_text_with_outline(
+                frame, f"次數：{rep_count}", (10, 10), font_size=30, text_color=(0, 255, 0)
+            )
     else:
         cv2.putText(frame, "No person detected", (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
     # 顯示畫面
-    cv2.imshow("Pose + Hand Detection", frame)
+    cv2.imshow("Jumping Jacks (Pose + Hand)", frame)
     if cv2.waitKey(1) & 0xFF == ord("q"):
         break
 
