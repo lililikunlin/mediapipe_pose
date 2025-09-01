@@ -8,35 +8,6 @@ import os
 from PIL import ImageFont, ImageDraw, Image #中文顯示
 import numpy as np  # 陣列與數值運算
 
-# ========== 開啟影片 ==========
-
-#cap = cv2.VideoCapture(0)              # 使用預設攝影機（0 表內建或第一個攝影機）
-VideoSource="精華樹式_BCDvv4UWL8s.mp4" # ← 改為影片來源
-cap = cv2.VideoCapture(VideoSource)   
-if not cap.isOpened():                # 如果攝影機無法開啟就結束
-    print("❌ 無法開啟影片")
-    exit()
-
-# 擷取影片資訊
-fps = int(cap.get(cv2.CAP_PROP_FPS))
-w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-# 準備寫入影片（先預設但不寫入）
-fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-
-# 處理副檔名忽略大小寫
-base_name = os.path.splitext(VideoSource)[0]  # 去掉副檔名
-output_path = f"{base_name}_OutputAnnotated.mp4"
-
-# 若檔案已存在，自動重命名避免覆蓋
-if os.path.exists(output_path):
-    timestamp = int(time.time())
-    output_path = f"{base_name}_OutputAnnotated_{timestamp}.mp4"
-    print(f"⚠️ 已存在同名輸出檔，已自動改名為：{output_path}")
-
-# 寫入器初始化
-out = cv2.VideoWriter(output_path, fourcc, fps, (w, h))
-
 
 # ========= 模型載入：Pose =========
 pose_model_path = 'pose_landmarker_full.task'
@@ -294,6 +265,11 @@ def classify_pose(person, img_w=None, img_h=None):
     except:
         return "偵測中...", None
 
+# ========= 開啟攝影機 =========
+cap = cv2.VideoCapture(0)
+if not cap.isOpened():
+    print("❌ 無法開啟攝影機")
+    exit()
 
 # ========= 主迴圈 =========
 while True:
@@ -408,17 +384,6 @@ while True:
     if cv2.waitKey(1) & 0xFF == ord("q"):
         break
 
-    # 寫入目前這一幀
-    out.write(frame)
-
 # ========= 結束處理 =========
 cap.release()
 cv2.destroyAllWindows()
-
-# 詢問使用者是否要保留儲存影片
-save = input("是否要儲存結果影片？(y/n): ").strip().lower()
-if save not in ['y', 'yes'] :
-    os.remove(output_path)
-    print("❌ 已刪除影片")
-else:
-    print("✅ 影片已儲存於：", output_path)
