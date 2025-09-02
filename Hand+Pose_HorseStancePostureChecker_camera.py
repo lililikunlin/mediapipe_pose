@@ -79,6 +79,10 @@ def calculate_angle(a, b, c):
 
 # ========= 姿勢分類（含角度偏差） =========
 def classify_pose(person):
+    """
+    規則：
+    膝蓋角度<120度開始顯示「蹲馬步-不良」，膝蓋角度83~97度顯示「蹲馬步-良好」，其他顯示站著。
+    """
     try:
         NOSE = 0
         LEFT_WRIST, RIGHT_WRIST = 15, 16

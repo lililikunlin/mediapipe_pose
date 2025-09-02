@@ -11,7 +11,7 @@ import numpy as np  # 陣列與數值運算
 # ========== 開啟影片 ==========
 
 #cap = cv2.VideoCapture(0)              # 使用預設攝影機（0 表內建或第一個攝影機）
-VideoSource="太極拳入門招式「蹲馬步」.mp4" # ← 改為影片來源
+VideoSource="蹲馬步測試者7.mp4" # ← 改為影片來源
 cap = cv2.VideoCapture(VideoSource)   
 if not cap.isOpened():                # 如果攝影機無法開啟就結束
     print("❌ 無法開啟影片")
@@ -147,6 +147,10 @@ def draw_chinese_text_with_outline(img, text, position,
 
 # ========= 姿勢分類（含角度偏差） =========
 def classify_pose(person):
+    """
+    規則：
+    膝蓋角度<120度開始顯示「蹲馬步-不良」，膝蓋角度83~97度顯示「蹲馬步-良好」，其他顯示站著。
+    """
     try:
         NOSE = 0
         LEFT_WRIST, RIGHT_WRIST = 15, 16

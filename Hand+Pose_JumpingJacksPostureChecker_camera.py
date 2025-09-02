@@ -157,7 +157,7 @@ def classify_jumping_jack(person):
       raw_state: 'open' / 'closed' / 'transit'
       info : dict，包含 arms_up, legs_apart, legs_together, ratio, ankle_dist, hip_width
     規則：
-      open   = arms_up 且 legs_apart (ratio > 1.4)
+      open   = arms_up 且 legs_apart (ratio > 2.8)
       closed = (not arms_up) 且 legs_together (ratio < 0.7)
       其他   = transit
     """
@@ -180,7 +180,7 @@ def classify_jumping_jack(person):
     arms_up = avg_wrist_y < (nose.y - 0.02)      # 容忍一點 margin
 
     # 腿部條件（具 hysteresis）
-    legs_apart = ratio > 1.4
+    legs_apart = ratio > 2.8
     legs_together = ratio < 0.7
 
     if arms_up and legs_apart:
