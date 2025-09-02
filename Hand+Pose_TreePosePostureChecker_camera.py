@@ -150,7 +150,7 @@ SMALL_MARGIN = 0.05            # 「下方一點點」的y差（0.05≈5% 影像
 
 # 膝角(右腿 24-26-28) 的等級區間（度）
 # 樹式越高等 → 右膝彎曲越多（角度越小）
-KNEE_ANGLE_L1 = (160, 180)     # Level 1：微彎
+KNEE_ANGLE_L1 = (140, 150)     # Level 1：微彎
 KNEE_ANGLE_L2 = (105, 115)     # Level 2：更彎
 KNEE_ANGLE_L34 = (35, 45)     # Level 3/4：幾乎成直角到更彎
 

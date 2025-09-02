@@ -83,9 +83,12 @@ def calculate_angle(a, b, c):
     angle_rad = math.acos(dot_product / (mag_ab * mag_cb))
     return math.degrees(angle_rad)
 
+# ====== 字型快取（全域）======
+_FONT_CACHE = {}
+DEFAULT_FONT_PATH = "C:/Windows/Fonts/msjh.ttc"  # 你原本用的路徑
 # ========= 中文 + 外框 文字繪製 =========
 def draw_chinese_text_with_outline(img, text, position,
-    font_path="C:/Windows/Fonts/msjh.ttc",
+    font_path=DEFAULT_FONT_PATH,
     font_size=24,
     text_color=(255,255,255),
     outline_color=(0,0,0),
@@ -94,31 +97,53 @@ def draw_chinese_text_with_outline(img, text, position,
     with_outline=True):
     """
     使用 PIL 在 OpenCV 影像上繪製中文文字。
-    可選擇是否描邊、是否加底色。
+    支援：字型物件快取（避免每次都 truetype 讀檔）、可選擇是否描邊、是否加底色。
     """
+    # OpenCV(BGR) → PIL(RGB)
     if isinstance(img, np.ndarray):
         img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
     else:
         img_pil = img
 
     draw = ImageDraw.Draw(img_pil)
-    font = ImageFont.truetype(font_path, font_size)
 
+    # ===== 字型快取 =====
+    key = (font_path, font_size)
+    font = _FONT_CACHE.get(key)
+    if font is None:
+        try:
+            font = ImageFont.truetype(font_path, font_size)
+        except OSError:
+            # 萬一路徑失敗，退回預設或 PIL 內建字型（英文/數字可用，中文可能空白）
+            try:
+                font = ImageFont.truetype(DEFAULT_FONT_PATH, font_size)
+            except Exception:
+                font = ImageFont.load_default()
+        _FONT_CACHE[key] = font  # 放入快取
+
+    # 量測文字尺寸
     text_bbox = draw.textbbox((0, 0), text, font=font)
     text_w = text_bbox[2] - text_bbox[0]
     text_h = text_bbox[3] - text_bbox[1]
     x, y = position
 
+    # 底色
     if bg_color is not None:
         draw.rectangle([x - padding, y - padding, x + text_w + padding, y + text_h + padding], fill=bg_color)
 
+    # 外框
     if with_outline:
-        for dx in [-1, 1, 0, 0, -1, -1, 1, 1]:
-            for dy in [-1, 1, 0, 0, -1, 1, -1, 1]:
+        # 8 個方向 + 十字，描邊更實心一些
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                if dx == 0 and dy == 0:
+                    continue
                 draw.text((x + dx, y + dy), text, font=font, fill=outline_color)
 
+    # 正文
     draw.text((x, y), text, font=font, fill=text_color)
 
+    # PIL(RGB) → OpenCV(BGR)
     return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
 # ============幫手函式============
@@ -175,7 +200,7 @@ def classify_jumping_jack(person):
     }
 
 # ==========穩定狀態與「過渡」納入計數的有限狀態機==========
-STABLE_FRAMES = {"open": 3, "closed": 3, "transit": 2}  # 各狀態需連續多少幀才視為「穩定」
+STABLE_FRAMES = {"open": 0, "closed": 0, "transit": 0}  # 各狀態需連續多少幀才視為「穩定」
 rep_count = 0
 
 last_raw_state = None
@@ -183,7 +208,7 @@ raw_streak = 0
 stable_state = "unknown"       # 目前穩定狀態
 phase = "await_open"           # 'await_open' -> 'saw_open' -> 'saw_open_transit' -> (到 closed 時 +1) -> 'await_open'
 
-cooldown_frames = 2            # 計數後最少等待幀數
+cooldown_frames = 3            # 計數後最少等待幀數
 since_last_count = cooldown_frames
 
 # ========= 主迴圈 =========
